@@ -1,7 +1,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <thread>
-#include "lockfreelist.h"
+#include "lockfreelist/lockfreelist.h"
 using namespace std;
 
 const int THREAD_COUNT = 2;
