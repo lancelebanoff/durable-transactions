@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <limits.h>
 #include <cstdio>
+#include "../durabletxn/dtx.h"
 #include "lockfreelist.h"
 
 inline bool is_marked_ref(LockfreeList::Node* i) 
@@ -75,6 +76,8 @@ LockfreeList::Node* LockfreeList::LocatePred(uint32_t key, Node** left)
         // Step 3: If there are marked nodes between left and right try to "remove" them.
         if(__sync_bool_compare_and_swap(&(*left)->next, left_next, right))
         {
+            DTX::PERSIST(&((*left)->next));
+
             if(right != m_tail && is_marked_ref(right->next))
                 goto repeat_search;
             else
@@ -159,10 +162,12 @@ bool LockfreeList::Insert(uint32_t key)
             n->key = key;
         }
         n->next = right; // point to right.
+        DTX::PERSIST(n);
 
         // try to change left->next to point to n instead of right.
         if (__sync_bool_compare_and_swap(&(left->next), right, n)) 
         {
+            DTX::PERSIST(&(left->next));
             return true;
         }
         // If CAS fails, someone messed up. Retry!
@@ -189,9 +194,11 @@ bool LockfreeList::Delete(uint32_t key)
         // n exists! Try to mark right->next.
         if (__sync_bool_compare_and_swap(&(right->next), get_unmarked_ref(right->next), get_marked_ref(right->next))) 
         {
+            DTX::PERSIST(&(right->next));
             // Also try to link left with right->next. 
             // if it fails it's ok - someone else fixed it.
             __sync_bool_compare_and_swap(&(left->next), right, get_unmarked_ref(right->next));
+            DTX::PERSIST(&(left->next));
             return true;
         }
 
