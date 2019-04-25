@@ -9,7 +9,7 @@
 #
 
 default: main.cc lockfreelist/lockfreelist.cc lockfreelist/lockfreelist.h boostinglist/boostinglist.cc boostinglist/boostinglist.h boostinglist/lockkey.cc boostinglist/lockkey.h
-	g++ main.cc lockfreelist/lockfreelist.cc lockfreelist/lockfreelist.h boostinglist/boostinglist.cc boostinglist/boostinglist.h boostinglist/lockkey.cc boostinglist/lockkey.h -pthread -std=c++11 -ltbb
+	g++ main.cc lockfreelist/lockfreelist.cc lockfreelist/lockfreelist.h boostinglist/boostinglist.cc boostinglist/boostinglist.h boostinglist/lockkey.cc boostinglist/lockkey.h -pthread -std=c++11 -ltbb -ltcmalloc
 
 d: main.cc lockfreelist/lockfreelist.cc lockfreelist/lockfreelist.h boostinglist/boostinglist.cc boostinglist/boostinglist.h boostinglist/lockkey.cc boostinglist/lockkey.h
-	g++ main.cc lockfreelist/lockfreelist.cc lockfreelist/lockfreelist.h boostinglist/boostinglist.cc boostinglist/boostinglist.h boostinglist/lockkey.cc boostinglist/lockkey.h -pthread -std=c++11 -ltbb -g
+	g++ main.cc lockfreelist/lockfreelist.cc lockfreelist/lockfreelist.h boostinglist/boostinglist.cc boostinglist/boostinglist.h boostinglist/lockkey.cc boostinglist/lockkey.h -pthread -std=c++11 -ltbb -ltcmalloc -g

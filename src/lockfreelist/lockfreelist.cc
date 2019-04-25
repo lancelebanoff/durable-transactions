@@ -155,22 +155,7 @@ bool LockfreeList::Insert(uint32_t key)
 
         // n does not exist! Initialize it and insert it.
         if (n == NULL) {
-            // Fetch and increment the global memory pointer.
-            uint32_t my_memptr = __sync_fetch_and_add(&memptr, 1);
-            // Figure out what block to use.
-            uint32_t my_memblock = my_memptr/MEM_BLOCK_SIZE;
-
-            // If that block is a new one, initialize it.
-            if(mem[my_memblock] == NULL) {
-                Node* tmpmem = (Node*)malloc(MEM_BLOCK_SIZE*sizeof(Node));
-                // Only one succeeds to initialize it. The rest free the temporary malloc.
-                if(!__sync_bool_compare_and_swap(&mem[my_memblock], NULL, tmpmem)) 
-                {
-                    free(tmpmem);
-                }
-            }
-            // Assign n a place in memory.
-            n = &mem[my_memblock][my_memptr%MEM_BLOCK_SIZE];
+            n = (Node*) malloc(sizeof(Node));
             n->key = key;
         }
         n->next = right; // point to right.
