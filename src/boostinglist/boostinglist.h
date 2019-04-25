@@ -4,7 +4,6 @@
 #include <vector>
 #include "lockkey.h"
 #include "../lockfreelist/lockfreelist.h"
-// #include "common/assert.h"
 
 
 class BoostingList
@@ -59,14 +58,6 @@ private:
     LockfreeList m_list;
     LockKey m_lock;
     static __thread LogType* m_log;
-
-    // ASSERT_CODE
-    // (
-    //     uint32_t g_count = 0;
-    //     uint32_t g_count_ins = 0;
-    //     uint32_t g_count_del = 0;
-    //     uint32_t g_count_fnd = 0;
-    // )
 
     uint32_t g_count_commit = 0;
     uint32_t g_count_abort = 0;

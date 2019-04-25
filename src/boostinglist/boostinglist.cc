@@ -5,12 +5,6 @@ __thread BoostingList::LogType* BoostingList::m_log;
 BoostingList::~BoostingList()
 {
     printf("Total commit %u, abort (total/fake) %u/%u\n", g_count_commit, g_count_abort, g_count_fake_abort);
-
-    // ASSERT_CODE
-    // (
-    //      printf("Total node count %u, Inserts %u, Deletions %u, Finds %u\n", g_count, g_count_ins, g_count_del, g_count_fnd);
-    //      //Print();
-    // );
 }
 
 void BoostingList::Init()
@@ -82,12 +76,8 @@ void BoostingList::OnAbort()
     for(int i = m_log->size() - 1; i >= 0; --i)
     {
         const Operation& op = m_log->at(i);
-
-        if(op.type == FIND)
-        {
-            // ASSERT(false, "Revert operation should be Find");
-        }
-        else if(op.type == INSERT)
+        
+        if(op.type == INSERT)
         {
             m_list.Insert(op.key);
         }
