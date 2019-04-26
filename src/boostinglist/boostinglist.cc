@@ -7,6 +7,10 @@ BoostingList::~BoostingList()
     printf("Total commit %u, abort (total/fake) %u/%u\n", g_count_commit, g_count_abort, g_count_fake_abort);
 }
 
+/* 
+ * Initializes the data structure for a thread.
+ * Should be called for each thread before executing transactions.
+ */
 void BoostingList::Init()
 {
     m_log = new LogType;
