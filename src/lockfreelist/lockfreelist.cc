@@ -4,6 +4,9 @@
 #include "../durabletxn/dtx.h"
 #include "lockfreelist.h"
 
+
+
+
 inline bool is_marked_ref(LockfreeList::Node* i) 
 {
   return (bool) ((intptr_t)i & 0x1L);
@@ -76,6 +79,7 @@ LockfreeList::Node* LockfreeList::LocatePred(uint32_t key, Node** left)
         // Step 3: If there are marked nodes between left and right try to "remove" them.
         if(__sync_bool_compare_and_swap(&(*left)->next, left_next, right))
         {
+            // DTX::CREATE_UNDO_LOG_ENTRY(&((*left)->next), sizeof((*left)->next));
             DTX::PERSIST(&((*left)->next));
 
             if(right != m_tail && is_marked_ref(right->next))
@@ -94,22 +98,36 @@ bool LockfreeList::Find(uint32_t key)
 }
 
 // Returns a new list and initializes the memory pool.
-LockfreeList::LockfreeList()
+// LockfreeList::LockfreeList()
+// {
+//     // Initialize tail.
+//     m_tail = (Node*)malloc(sizeof(Node));
+//     m_tail->key = 0xffffffff;
+//     m_tail->next = NULL;
+    
+//     // Initialize head.
+//     m_head = (Node*)malloc(sizeof(Node));
+//     m_head->key = 0;
+//     m_head->next = m_tail;
+
+//     // Initialize the memory pool and the first block.
+//     memptr = 0;
+//     mem = (Node**)malloc(MEM_BLOCK_CNT*sizeof(Node));
+//     mem[0] = (Node*)malloc(MEM_BLOCK_SIZE*sizeof(Node));
+// }
+
+LockfreeList::LockfreeList(Allocator<Node>* nodeAllocator)
 {
+    m_nodeAllocator = nodeAllocator;
     // Initialize tail.
-    m_tail = (Node*)malloc(sizeof(Node));
+    m_tail = new(m_nodeAllocator->Alloc()) Node();
     m_tail->key = 0xffffffff;
     m_tail->next = NULL;
     
     // Initialize head.
-    m_head = (Node*)malloc(sizeof(Node));
+    m_head = new(m_nodeAllocator->Alloc()) Node();
     m_head->key = 0;
-    m_head->next = m_tail;
-
-    // Initialize the memory pool and the first block.
-    memptr = 0;
-    mem = (Node**)malloc(MEM_BLOCK_CNT*sizeof(Node));
-    mem[0] = (Node*)malloc(MEM_BLOCK_SIZE*sizeof(Node));
+    m_head->next = m_tail;    
 }
 
 // Deletes the entire memory pool and the entire list.
@@ -158,15 +176,20 @@ bool LockfreeList::Insert(uint32_t key)
 
         // n does not exist! Initialize it and insert it.
         if (n == NULL) {
-            n = (Node*) malloc(sizeof(Node));
+            // n = (Node*) malloc(sizeof(Node));
+            n = new(m_nodeAllocator->Alloc()) Node();
             n->key = key;
         }
         n->next = right; // point to right.
         DTX::PERSIST(n);
 
+        // create undo-log
+        // DTX::CREATE_UNDO_LOG_ENTRY(&(left->next), sizeof(left->next));
+
         // try to change left->next to point to n instead of right.
         if (__sync_bool_compare_and_swap(&(left->next), right, n)) 
         {
+
             DTX::PERSIST(&(left->next));
             return true;
         }
@@ -190,14 +213,21 @@ bool LockfreeList::Delete(uint32_t key)
         {
             return false; // does not exist.
         }
+
+        // create undo-log
+        // DTX::CREATE_UNDO_LOG_ENTRY(&(right->next), sizeof(right->next));
         
         // n exists! Try to mark right->next.
         if (__sync_bool_compare_and_swap(&(right->next), get_unmarked_ref(right->next), get_marked_ref(right->next))) 
         {
+
             DTX::PERSIST(&(right->next));
+            // create undo-log
+            // DTX::CREATE_UNDO_LOG_ENTRY(&(left->next), sizeof(left->next));
             // Also try to link left with right->next. 
             // if it fails it's ok - someone else fixed it.
             __sync_bool_compare_and_swap(&(left->next), right, get_unmarked_ref(right->next));
+
             DTX::PERSIST(&(left->next));
             return true;
         }

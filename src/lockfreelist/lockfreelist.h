@@ -2,6 +2,8 @@
 #define LLIST_H_
 
 #include <cstdint>
+#include "../durabletxn/dtx.h"
+#include "../common/allocator.h"
 
 // boolean CAS_PTR for ease of coding.
 #define CAS_PTR_BOOL(addr, old, new) (old == CAS_PTR(addr, old, new))
@@ -17,7 +19,7 @@ public:
         Node* next;
     };
 
-    LockfreeList();
+    LockfreeList(Allocator<Node>* nodeAllocator);
     ~LockfreeList();
 
     bool Find(uint32_t key);
@@ -36,6 +38,7 @@ private:
     Node* m_tail;
 
     // Memory pool
+    Allocator<Node>* m_nodeAllocator;
     Node** mem; // Memory blocks
     uint32_t memptr; // Current cell
 };

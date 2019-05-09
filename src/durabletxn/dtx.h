@@ -2,8 +2,9 @@
 #define DTX_H
 
 #include <immintrin.h>
+#include <cstring>
 #include <vector>
-#include <boost/any.hpp>
+#include <map>
 #include "../lockfreelist/lockfreelist.h"
 
 // Preprocessor parameter that determines whether or not to provide durability
@@ -13,17 +14,35 @@
  * A single entry in the undo log.
  * It holds a pointer to data that will be changed, along with the old data.
  */
-template <typename T>
+
+
+
 struct LogEntry
 {
-    T* ptr;
-    T oldData;
+    void* ptr;
+    void* data;
+    int size;
 
-    LogEntry(T* ptr, T oldData)
-    {
-        this.ptr = ptr;
-        this.oldData = oldData;
+    void* pmem_allocate_memory(int size) {
+        return malloc(size);
     }
+
+    LogEntry(void* p, int sz)
+    {
+        ptr = p;
+        size = sz;
+        data = pmem_allocate_memory(size);
+        memcpy(reinterpret_cast<void*>(data), p, size);
+    }
+
+    LogEntry()
+    {
+        size = 0;
+        ptr = nullptr;
+        data = nullptr;
+    }
+
+    // void* pmem_allocate_memory(int size);
 };
 
 enum TxStatus
@@ -38,16 +57,18 @@ enum TxStatus
  */
 struct UndoLog
 {
-    std::vector<LogEntry<boost::any>>* entries;
+    std::map<uintptr_t, LogEntry>* entries;
     TxStatus status;
 
     void Init();
 
-    template <typename T>
-    void Push(T* ptr, T oldData);
+    void Push(void* ptr, int size);
 
     void Uninit();
 };
+
+
+
 
 /* 
  * Class for durable transaction support.
@@ -74,7 +95,6 @@ class DTX
 public:
 
     static __thread UndoLog* log;
-
     /* 
     * Creates an undo log for the thread.
     * Should be called for each thread before it runs any transactions.
@@ -112,11 +132,12 @@ public:
      * Adds a new entry to the undo log and persists it.
      * Should be called before executing a write instruction in a transaction.
      */
-    template <typename T>
-    static void CREATE_UNDO_LOG_ENTRY(T* ptr)
+    static void CREATE_UNDO_LOG_ENTRY(void* ptr, int size)
     {
     #ifdef USING_DURABLE_TXN
-        log->Push(ptr, *ptr);
+        if(nullptr == ptr)
+            return;
+        log->Push(ptr, size);
         PERSIST(ptr);
     #endif
     }

@@ -11,9 +11,10 @@ BoostingList::~BoostingList()
  * Initializes the data structure for a thread.
  * Should be called for each thread before executing transactions.
  */
-void BoostingList::Init()
+void BoostingList::Init(Allocator<LockfreeList::Node>* nodeAllocator)
 {
     m_log = new LogType;
+    m_list = new LockfreeList(nodeAllocator);
     m_lock.Init();
 }
 
@@ -24,6 +25,12 @@ void BoostingList::Uninit()
     m_lock.Uninit();
 }
 
+void BoostingList::CREATE_UNDO_LOG_ENTRY(Operation op)
+{
+    m_log->push_back(op);
+    DTX::PERSIST(&op);
+}
+
 BoostingList::ReturnCode BoostingList::Insert(uint32_t key)
 {
     if(!m_lock.Lock(key))
@@ -31,12 +38,12 @@ BoostingList::ReturnCode BoostingList::Insert(uint32_t key)
         return LOCK_FAIL;
     }
 
-    if(!m_list.Insert(key))
+    if(!m_list->Insert(key))
     {
         return OP_FAIL;
     }
 
-    m_log->push_back(Operation(DELETE, key));
+    CREATE_UNDO_LOG_ENTRY(Operation(DELETE, key));
 
     return OK;
 }
@@ -48,12 +55,12 @@ BoostingList::ReturnCode BoostingList::Delete(uint32_t key)
         return LOCK_FAIL;
     }
 
-    if(!m_list.Delete(key))
+    if(!m_list->Delete(key))
     {
         return OP_FAIL;
     }
 
-    m_log->push_back(Operation(INSERT, key));
+    CREATE_UNDO_LOG_ENTRY(Operation(INSERT, key));
 
     return OK;
 }
@@ -65,7 +72,7 @@ BoostingList::ReturnCode BoostingList::Find(uint32_t key)
         return LOCK_FAIL; 
     }
             
-    if(!m_list.Find(key))
+    if(!m_list->Find(key))
     {
         return OP_FAIL; 
     }
@@ -83,11 +90,11 @@ void BoostingList::OnAbort()
         
         if(op.type == INSERT)
         {
-            m_list.Insert(op.key);
+            m_list->Insert(op.key);
         }
         else
         {
-            m_list.Delete(op.key);
+            m_list->Delete(op.key);
         }
     }
 
@@ -105,5 +112,5 @@ void BoostingList::OnCommit()
 
 void BoostingList::Print()
 {
-    m_list.Print();
+    m_list->Print();
 }

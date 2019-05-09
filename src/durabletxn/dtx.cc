@@ -4,15 +4,20 @@
 
 // static __thread UndoLog* log = NULL;
 
+__thread UndoLog* DTX::log;
+
+
+
+
 void UndoLog::Init()
 {
-    entries = new std::vector<LogEntry<boost::any>>();
+    entries = new std::map<uintptr_t, LogEntry>();
 }
 
-template <typename T>
-void UndoLog::Push(T* ptr, T oldData)
+void UndoLog::Push(void* ptr, int size)
 {
-    entries->push_back(LogEntry<T>(ptr, oldData));
+    auto key = reinterpret_cast<std::uintptr_t>(ptr);
+    entries->insert(std::pair<uintptr_t, LogEntry>(key, LogEntry(ptr, size)));
 }
 
 void UndoLog::Uninit()

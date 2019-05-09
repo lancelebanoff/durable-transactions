@@ -38,7 +38,7 @@ public:
 public:
    ~BoostingList(); 
 
-    void Init();
+    void Init(Allocator<LockfreeList::Node>* nodeAllocator);
     
     void Uninit();
     
@@ -53,9 +53,13 @@ public:
     void OnCommit();
 
     void Print();
+
+    void CREATE_UNDO_LOG_ENTRY(Operation op);
     
 private:
-    LockfreeList m_list;
+
+
+    LockfreeList* m_list;
     LockKey m_lock;
     static __thread LogType* m_log;
 

@@ -61,7 +61,6 @@ public:
                 m_lockSet->erase(lock);
             }
         }
-
         return false;
     }
 
