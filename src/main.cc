@@ -1,8 +1,11 @@
+
+#include "common/allocator.h"
 #include <cstdlib>
 #include <cstdio>
 #include <thread>
 #include "lockfreelist/lockfreelist.h"
 #include "boostinglist/boostinglist.h"
+#include "lftt/translist.h"
 #include "durabletxn/dtx.h"
 using namespace std;
 
@@ -68,28 +71,53 @@ void runDurableBoostingThread(BoostingList* list, int threadId, Allocator<Lockfr
 
 }
 
-int main()
-{
-    // LockfreeList* lockfreelist = new LockfreeList();
+void runDurableLFTTThread(TransList* list, int threadId, Allocator<TransList::Node>* m_nodeAllocator, Allocator<TransList::Desc>* m_descAllocator, Allocator<TransList::NodeDesc>* m_nodeDescAllocator) {
+    
+    m_nodeAllocator->Init();
+    m_descAllocator->Init();
+    m_nodeDescAllocator->Init();
+
+
+    for(int t = 0; t < NUM_OF_TRANSACTIONS; t++) {
+
+        TransList::Desc* desc = m_descAllocator->Alloc();
+        desc->size = TRANSACTION_SIZE;
+        desc->status = TransList::ACTIVE;
+
+        for(uint32_t i = 0; i < TRANSACTION_SIZE; ++i)
+        {
+            desc->ops[i].type = TransList::OpType::INSERT; 
+            desc->ops[i].key = (threadId + 1) * 10 + (i + 1) + (t+1) * 100; 
+        }
+
+        bool ret = list->ExecuteOps(desc);
+        if(!ret)
+            printf("transaction %d was failed!\n\r", t);
+    }
+
+}
+
+void test_lockfreelist() {
+    thread threads[THREAD_COUNT]; // Create our threads
     Allocator<LockfreeList::Node> m_nodeAllocator(NUM_OF_TRANSACTIONS * THREAD_COUNT * sizeof(LockfreeList::Node) * TRANSACTION_SIZE, THREAD_COUNT, sizeof(LockfreeList::Node));
+    LockfreeList* lockfreelist = new LockfreeList(&m_nodeAllocator);
+	for(long i=0; i<THREAD_COUNT; i++) { // Start our threads
+		threads[i] = thread(runThread, lockfreelist, i);
+	}
+	for(int i=0; i<THREAD_COUNT; i++) { // Wait for all threads to complete
+		threads[i].join();
+	}
 
+    lockfreelist->Print();    
+}
 
-	thread threads[THREAD_COUNT]; // Create our threads
-	// for(long i=0; i<THREAD_COUNT; i++) { // Start our threads
-	// 	threads[i] = thread(runThread, lockfreelist, i);
-	// }
-	// for(int i=0; i<THREAD_COUNT; i++) { // Wait for all threads to complete
-	// 	threads[i].join();
-	// }
-
- //    lockfreelist->Print();
-
-
+void test_boosting() {
+    thread threads[THREAD_COUNT];
+    Allocator<LockfreeList::Node> m_nodeAllocator(NUM_OF_TRANSACTIONS * THREAD_COUNT * sizeof(LockfreeList::Node) * TRANSACTION_SIZE, THREAD_COUNT, sizeof(LockfreeList::Node));
     BoostingList* boostinglist = new BoostingList();
 
 	for(long i=0; i<THREAD_COUNT; i++) { // Start our threads
-		// threads[i] = thread(runBoostingThread, boostinglist, i);
-        threads[i] = thread(runDurableBoostingThread, boostinglist, i, &m_nodeAllocator);
+		threads[i] = thread(runDurableBoostingThread, boostinglist, i, &m_nodeAllocator);
         
 	}
 	for(int i=0; i<THREAD_COUNT; i++) { // Wait for all threads to complete
@@ -97,4 +125,34 @@ int main()
 	}
 
     boostinglist->Print();
+
+}
+
+void test_lftt() {
+    thread threads[THREAD_COUNT]; // Create our threads
+
+    Allocator<TransList::Node> m_nodeAllocator("m_nodeAllocator6", NUM_OF_TRANSACTIONS * THREAD_COUNT * sizeof(TransList::Node) * TRANSACTION_SIZE, THREAD_COUNT, sizeof(TransList::Node));
+    Allocator<TransList::Desc> m_descAllocator("m_descAllocator6", NUM_OF_TRANSACTIONS * THREAD_COUNT * TransList::Desc::SizeOf(TRANSACTION_SIZE), THREAD_COUNT, TransList::Desc::SizeOf(TRANSACTION_SIZE));
+    Allocator<TransList::NodeDesc> m_nodeDescAllocator("m_nodeDescAllocator6",NUM_OF_TRANSACTIONS * THREAD_COUNT * sizeof(TransList::NodeDesc) * TRANSACTION_SIZE, THREAD_COUNT, sizeof(TransList::NodeDesc));
+
+    TransList* transList = new TransList(&m_nodeAllocator, &m_descAllocator, &m_nodeDescAllocator);
+
+	for(long i=0; i<THREAD_COUNT; i++) { // Start our threads
+        threads[i] = thread(runDurableLFTTThread, transList, i, &m_nodeAllocator, &m_descAllocator, &m_nodeDescAllocator);
+        
+	}
+	for(int i=0; i<THREAD_COUNT; i++) { // Wait for all threads to complete
+		threads[i].join();
+	}
+
+    transList->Print();    
+
+}
+
+int main()
+{
+    
+    test_lftt();   
+
+
 }

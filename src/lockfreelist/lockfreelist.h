@@ -1,9 +1,10 @@
 #ifndef LLIST_H_ 
 #define LLIST_H_
 
+#include "../common/allocator.h"
 #include <cstdint>
 #include "../durabletxn/dtx.h"
-#include "../common/allocator.h"
+
 
 // boolean CAS_PTR for ease of coding.
 #define CAS_PTR_BOOL(addr, old, new) (old == CAS_PTR(addr, old, new))
