@@ -146,7 +146,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
     std::vector<Node*> insPredNodes;
 
 
-    DTX::PERSIST(desc);
+    
 
     helpStack.Push(desc);
 

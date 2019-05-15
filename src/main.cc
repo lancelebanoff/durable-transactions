@@ -84,10 +84,13 @@ void runDurableLFTTThread(TransList* list, int threadId, Allocator<TransList::No
         desc->size = TRANSACTION_SIZE;
         desc->status = TransList::ACTIVE;
 
+        DTX::PERSIST(desc);
+
         for(uint32_t i = 0; i < TRANSACTION_SIZE; ++i)
         {
             desc->ops[i].type = TransList::OpType::INSERT; 
             desc->ops[i].key = (threadId + 1) * 10 + (i + 1) + (t+1) * 100; 
+            DTX::PERSIST(&(desc->ops[i]));
         }
 
         bool ret = list->ExecuteOps(desc);
