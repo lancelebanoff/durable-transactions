@@ -10,22 +10,30 @@
 #include <new>
 #include "translist.h"
 #include "../durabletxn/dtx.h"
-
+#include "../logging.h"
 
 #define SET_MARK(_p)    ((Node *)(((uintptr_t)(_p)) | 1))
 #define CLR_MARK(_p)    ((Node *)(((uintptr_t)(_p)) & ~1))
 #define CLR_MARKD(_p)    ((NodeDesc *)(((uintptr_t)(_p)) & ~1))
 #define IS_MARKED(_p)     (((uintptr_t)(_p)) & 1)
 
+extern pmem_durableds_logger logger;
 __thread TransList::HelpStack helpStack;
 
-TransList::TransList(Allocator<Node>* nodeAllocator, Allocator<Desc>* descAllocator, Allocator<NodeDesc>* nodeDescAllocator)
-    : m_tail(new Node(0xffffffff, NULL, NULL))
-    , m_head(new Node(0, m_tail, NULL))
-    , m_nodeAllocator(nodeAllocator)
+TransList::TransList(Allocator<Node>* nodeAllocator, Allocator<Desc>* descAllocator, Allocator<NodeDesc>* nodeDescAllocator, bool newList)
+    : m_nodeAllocator(nodeAllocator)
     , m_descAllocator(descAllocator)
     , m_nodeDescAllocator(nodeDescAllocator)
-{}
+{
+    if(newList) {
+        m_tail = new (m_nodeAllocator->Alloc()) Node(0xffffffff, NULL, NULL);
+        m_head = new (m_nodeAllocator->Alloc()) Node(0, m_tail, NULL);
+    }else {
+        m_tail = m_nodeAllocator->Alloc();
+        m_head = m_nodeAllocator->Alloc();
+    }
+
+}
 
 TransList::~TransList()
 {
@@ -44,7 +52,6 @@ TransList::~TransList()
         //curr = curr->next;
     //}
 }
-
 
 TransList::Desc* TransList::AllocateDesc(uint8_t size)
 {
@@ -184,27 +191,27 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
 
     if(ret != FAIL)
     {
-        printf("transaction was succesfull \n\r");
+        // printf("transaction was succesfull \n\r");
         if(__sync_bool_compare_and_swap(&desc->status, ACTIVE, COMMITTED))
         {
-            printf("transaction status was changed to committed: %d\n\r", desc->status);
+            // printf("transaction status was changed to committed: %d\n\r", desc->status);
             
             DTX::PERSIST(desc);
 
-            printf("after persist: %d\n\r", desc->status);
+            // printf("after persist: %d\n\r", desc->status);
 
             MarkForDeletion(delNodes, delPredNodes, desc);
             __sync_fetch_and_add(&g_count_commit, 1);
         }else {
-            printf("failed to change the transaction status to committed \n\r");
+            logger.pmem_durableds_elog("failed to change the transaction status to committed");
         }
     }
     else
     {
-        printf("transaction was failed! \n\r");
+        logger.pmem_durableds_elog("transaction was failed!");
         if(__sync_bool_compare_and_swap(&desc->status, ACTIVE, ABORTED))
         {
-            printf("marked for deletion! \n\r");
+            logger.pmem_durableds_dlog("marked for deletion! \n\r");
             MarkForDeletion(insNodes, insPredNodes, desc);
             __sync_fetch_and_add(&g_count_abort, 1);
         }     
@@ -485,7 +492,7 @@ inline bool TransList::IsKeyExist(NodeDesc* nodeDesc)
     bool isNodeActive = IsNodeActive(nodeDesc);
     uint8_t opType = nodeDesc->desc->ops[nodeDesc->opid].type;
 
-    printf("nodeDesc->desc->status=%d, nodeDesc->opid=%d\n\r", nodeDesc->desc->status, nodeDesc->opid);
+    // printf("nodeDesc->desc->status=%d, nodeDesc->opid=%d\n\r", nodeDesc->desc->status, nodeDesc->opid);
 
     return  (opType == FIND) || (isNodeActive && opType == INSERT) || (!isNodeActive && opType == DELETE);
 }
@@ -526,7 +533,8 @@ void TransList::Print()
 
     while(curr != m_tail)
     {
-        printf("Node [%p] Key [%u] Status [%s]\n", curr, curr->key, IsKeyExist(CLR_MARKD(curr->nodeDesc))? "Exist":"Inexist");
+        printf("Node [%p] Key [%u] Status [%s], curr->next=%p\n\r", curr, curr->key, IsKeyExist(CLR_MARKD(curr->nodeDesc))? "Exist":"Inexist", curr->next);
         curr = CLR_MARK(curr->next);
+        
     }
 }

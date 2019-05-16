@@ -6,6 +6,8 @@
 // #include "common/assert.h"
 #include "../common/allocator.h"
 
+
+
 class TransList
 {
 public:
@@ -60,7 +62,8 @@ public:
 
     struct Node
     {
-        Node(): key(0), next(NULL), nodeDesc(NULL){}
+        // Node(): key(0), next(NULL), nodeDesc(NULL){}
+        Node() {}
         Node(uint32_t _key, Node* _next, NodeDesc* _nodeDesc)
             : key(_key), next(_next), nodeDesc(_nodeDesc){}
 
@@ -108,7 +111,7 @@ public:
         uint8_t index;
     };
 
-    TransList(Allocator<Node>* nodeAllocator, Allocator<Desc>* descAllocator, Allocator<NodeDesc>* nodeDescAllocator);
+    TransList(Allocator<Node>* nodeAllocator, Allocator<Desc>* descAllocator, Allocator<NodeDesc>* nodeDescAllocator, bool newList = true);
     ~TransList();
 
     bool ExecuteOps(Desc* desc);
