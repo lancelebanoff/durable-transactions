@@ -118,9 +118,12 @@ inline void TransList::MarkForDeletion(const std::vector<Node*>& nodes, const st
             {
                 if(__sync_bool_compare_and_swap(&n->nodeDesc, nodeDesc, SET_MARK(nodeDesc)))
                 {
+                    DTX::PERSIST(&n->nodeDesc);
                     Node* pred = preds[i];
                     Node* succ = CLR_MARK(__sync_fetch_and_or(&n->next, 0x1));
+                    DTX::PERSIST(&n->next);
                     __sync_bool_compare_and_swap(&pred->next, n, succ);
+                    DTX::PERSIST(&pred->next);
                 }
             }
         }
@@ -244,13 +247,14 @@ inline TransList::ReturnCode TransList::Insert(uint32_t key, Desc* desc, uint8_t
                 {
                     DTX::PERSIST(nodeDesc);
                     new_node = new(m_nodeAllocator->Alloc()) Node(key, NULL, nodeDesc);
-                    DTX::PERSIST(new_node);
+                    DTX::PERSIST(new_node);    
                 }
                 new_node->next = curr;
+                DTX::PERSIST(&new_node->next);
 
                 Node* pred_next = __sync_val_compare_and_swap(&pred->next, curr, new_node);
 
-                DTX::PERSIST(new_node->next);
+                DTX::PERSIST(&pred->next);
 
                 if(pred_next == curr)
                 {
@@ -277,6 +281,7 @@ inline TransList::ReturnCode TransList::Insert(uint32_t key, Desc* desc, uint8_t
                 if(!IS_MARKED(curr->next))
                 {
                     (__sync_fetch_and_or(&curr->next, 0x1));
+                    DTX::PERSIST(&curr->next);
                 }
                 curr = m_head;
                 continue;
@@ -302,6 +307,7 @@ inline TransList::ReturnCode TransList::Insert(uint32_t key, Desc* desc, uint8_t
                 {
                     //Update desc 
                     currDesc = __sync_val_compare_and_swap(&curr->nodeDesc, oldCurrDesc, nodeDesc);
+                    DTX::PERSIST(&curr->nodeDesc);
 
                     if(currDesc == oldCurrDesc)
                     {
@@ -368,7 +374,9 @@ inline TransList::ReturnCode TransList::Delete(uint32_t key, Desc* desc, uint8_t
                 //if(currDesc == oldCurrDesc)
                 {
                     //Update desc 
+                    DTX::PERSIST(nodeDesc);
                     currDesc = __sync_val_compare_and_swap(&curr->nodeDesc, oldCurrDesc, nodeDesc);
+                    DTX::PERSIST(&curr->nodeDesc);
 
                     if(currDesc == oldCurrDesc)
                     {
@@ -420,6 +428,7 @@ inline TransList::ReturnCode TransList::Find(uint32_t key, Desc* desc, uint8_t o
                 if(!IS_MARKED(curr->next))
                 {
                     (__sync_fetch_and_or(&curr->next, 0x1));
+                    DTX::PERSIST(&curr->next);
                 }
                 curr = m_head;
                 continue;
@@ -446,7 +455,9 @@ inline TransList::ReturnCode TransList::Find(uint32_t key, Desc* desc, uint8_t o
                 //if(currDesc == oldCurrDesc)
                 {
                     //Update desc 
+                    DTX::PERSIST(nodeDesc);
                     currDesc = __sync_val_compare_and_swap(&curr->nodeDesc, oldCurrDesc, nodeDesc);
+                    DTX::PERSIST(&curr->nodeDesc);
 
                     if(currDesc == oldCurrDesc)
                     {
@@ -518,6 +529,9 @@ inline void TransList::LocatePred(Node*& pred, Node*& curr, uint32_t key)
             if(!__sync_bool_compare_and_swap(&pred->next, pred_next, curr))
             {
                 curr = m_head;
+            } 
+            else {
+                DTX::PERSIST(&pred->next);
             }
 
             //__sync_bool_compare_and_swap(&pred->next, pred_next, curr);

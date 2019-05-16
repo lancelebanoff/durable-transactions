@@ -41,10 +41,10 @@ void pmem_durableds_log(log_severity_type s, Rest...parm)
 };
 
 
-pmem_durableds_logger(log_severity_type s)
-{
-    _pmem_durableds_log_severity = s;
-};
+pmem_durableds_logger(log_severity_type s);
+// {
+//     _pmem_durableds_log_severity = s;
+// };
 
 
 template<typename...Rest >
