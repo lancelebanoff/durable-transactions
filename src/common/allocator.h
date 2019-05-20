@@ -28,7 +28,9 @@ class Allocator
 public:
     Allocator(uint64_t totalBytes, uint64_t threadCount, uint64_t typeSize)
     {
+        logger.pmem_durableds_dlog("first constructor was called! siseof(DataType)=", sizeof(DataType),"\n\r");
         isMemMapped = false;
+        isReloadedMem = false;
         m_totalBytes = totalBytes;
         m_threadCount = threadCount;
         m_typeSize = typeSize;
@@ -48,7 +50,7 @@ public:
 
     Allocator()
     {
-        logger.pmem_durableds_dlog("empty constructor was called! siseof(DataType)=", sizeof(DataType));
+        logger.pmem_durableds_dlog("empty constructor was called! siseof(DataType)=", sizeof(DataType),"\n\r");
     }    
 
     // void init(const char* name, uint64_t totalBytes) {
@@ -59,7 +61,9 @@ public:
 
     void reload_mem(const char* name)
     {
+        logger.pmem_durableds_dlog("reload_mem was called with name=", name);
         isMemMapped = true;
+        isReloadedMem = true;
     	mode_t perms = S_IRUSR | S_IWUSR;
 
         int current_size = 0;
@@ -82,11 +86,39 @@ public:
             logger.pmem_durableds_elog("ERROR: mmap error! (",errno,"): ", strerror(errno), ", size=", current_size, ", name=", name, "requested size=", current_size);
             return;
         }
+
+
         shm_name = name;
         shm_fd = fd;  
 
         m_totalBytes = current_size;
         m_ticket = 0;
+
+        logger.pmem_durableds_dlog("reload_mem: m_pool was initialized: ", m_pool);
+
+        char* freeIndexFileNamePostFix = "_freeIndex";
+        char* freeIndexVectorName = new char[strlen(shm_name) + strlen(freeIndexFileNamePostFix)];
+        sprintf(freeIndexVectorName, "%s%s", shm_name, freeIndexFileNamePostFix);
+
+        fd = shm_open(freeIndexVectorName, flags, perms);
+        if(fd == -1) {
+            logger.pmem_durableds_elog("ERROR: shm_open with name ",freeIndexVectorName, " error: ",errno,": ", strerror(errno));
+            return;
+        }else {
+            struct stat sb;
+            fstat( fd , &sb );
+            current_size = sb.st_size;
+            logger.pmem_durableds_dlog("reload_mem: freeIndexVectorName file was opened: ", freeIndexVectorName);
+        }
+
+        mg_freeIndex = (uint64_t*)mmap(mg_freeIndex, current_size, PROT_READ | PROT_WRITE,
+            MAP_SHARED, fd, 0);
+
+        if(MAP_FAILED == mg_freeIndex) {
+            logger.pmem_durableds_elog("ERROR: mmap error! (",errno,"): ", strerror(errno), ", size=", current_size, ", name=", freeIndexVectorName, "requested size=", current_size);
+            return;
+        }        
+
         logger.pmem_durableds_dlog("reload_mem was completed with name=", name);
     }
 
@@ -125,12 +157,70 @@ public:
         m_ticket = 0;
     }
 
+    void buildFreeIndexVector()
+    {
+        char* freeIndexFileNamePostFix = "_freeIndex";
+        char* freeIndexVectorName = new char[strlen(shm_name) + strlen(freeIndexFileNamePostFix)];
+        sprintf(freeIndexVectorName, "%s%s", shm_name, freeIndexFileNamePostFix);
+
+        mode_t perms = S_IRUSR | S_IWUSR;
+        int flags = O_RDWR | O_CREAT | O_EXCL;
+        int fd = shm_open(freeIndexVectorName, flags, perms);
+        int current_size = m_threadCount * sizeof(uint64_t);
+        if(fd == -1) {
+            if(EEXIST == errno){
+                logger.pmem_durableds_elog("memory with name ", freeIndexVectorName, " already exists");
+
+                perms = S_IRUSR | S_IWUSR;
+
+                current_size = 0;
+
+                flags = O_RDWR;
+                fd = shm_open(freeIndexVectorName, flags, perms);
+                if(fd == -1) {
+                    logger.pmem_durableds_elog("ERROR: shm_open with name ",freeIndexVectorName, " error: ",errno,": ", strerror(errno));
+                    return;
+                }else{
+                    struct stat sb;
+                    fstat( fd , &sb );
+                    current_size = sb.st_size;
+                }
+
+                mg_freeIndex = (uint64_t*)mmap(NULL, current_size, PROT_READ | PROT_WRITE,
+                    MAP_SHARED, fd, 0);
+
+                if(MAP_FAILED == mg_freeIndex) {
+                    logger.pmem_durableds_elog("ERROR: mmap error! (",errno,"): ", strerror(errno), ", size=", current_size, ", name=", freeIndexVectorName, "requested size=", current_size);
+                    return;
+                }
+
+            }else {
+                logger.pmem_durableds_elog("ERROR: shm_open with name ",freeIndexVectorName, " error: ",errno,": ", strerror(errno));
+            }
+        }else {
+            logger.pmem_durableds_dlog("creating memory with name ", freeIndexVectorName);
+            if(ftruncate(fd, current_size) == -1) {
+                logger.pmem_durableds_elog("ERROR: ftruncate error: ", errno, ": ", strerror(errno));
+            }            
+    
+
+            mg_freeIndex = (uint64_t*)mmap(NULL, current_size, PROT_READ | PROT_WRITE,
+                MAP_SHARED, fd, 0);
+
+            if(MAP_FAILED == mg_freeIndex) {
+                logger.pmem_durableds_elog("ERROR: mmap error! (",errno,"): ", strerror(errno), ", size=", current_size, ", name=", freeIndexVectorName, "requested size=", current_size);
+            }
+            memset(mg_freeIndex, 0, current_size);                
+        }            
+    }
+
     Allocator(const char* name, uint64_t totalBytes, uint64_t threadCount, uint64_t typeSize)
     {
            
         // init(name, totalBytes);
         logger.pmem_durableds_dlog("Allocator was called with name ", name, ", totalBytes=", totalBytes, ", typeSize=", typeSize);
 
+        isReloadedMem = false;
         isMemMapped = true;
         bool new_mem = true;
     	mode_t perms = S_IRUSR | S_IWUSR;
@@ -171,6 +261,7 @@ public:
             m_typeSize = typeSize;
             m_ticket = 0;
         }
+        buildFreeIndexVector();
         
         logger.pmem_durableds_dlog("Allocator was completed with name ", name, ", m_pool=", m_pool);
         ASSERT(m_pool, "Memory pool initialization failed.");
@@ -205,17 +296,39 @@ public:
         uint64_t threadId = __sync_fetch_and_add(&m_ticket, 1);
         ASSERT(threadId < m_threadCount, "ThreadId specified should be smaller than thread count.");
         m_base = m_pool + threadId * m_totalBytes / m_threadCount;
-        m_freeIndex = 0;
+        if(isReloadedMem) {
+            m_freeIndex = mg_freeIndex[threadId];
+        } else {
+            m_freeIndex = 0;
+            mg_freeIndex[threadId] = 0;
+        }
     }
+
+    DataType* getFirst()
+    {
+        ASSERT(m_base, "out of capacity.");
+        char* ret = m_base;
+        return (DataType*)ret;
+    }
+
+    DataType* getNext(DataType* p)
+    {
+        ASSERT((char*)p + m_typeSize < m_base + m_totalBytes / m_threadCount, "out of capacity.");
+        char* ret = (char*)p + m_typeSize;
+        return (DataType*)ret;
+    }    
+
 
     void Uninit()
     { }
 
     DataType* Alloc()
     {
+        logger.pmem_durableds_dlog("Alloc was called on the allocator with name ", shm_name);
         ASSERT(m_freeIndex < m_totalBytes / m_threadCount, "out of capacity.");
         char* ret = m_base + m_freeIndex;
         m_freeIndex += m_typeSize;
+        mg_freeIndex[threadId] = m_freeIndex;
         return (DataType*)ret;
     }
 
@@ -233,6 +346,7 @@ public:
 
 private:
     bool isMemMapped;
+    bool isReloadedMem;
     const char* shm_name;
     int shm_fd;
 
@@ -241,9 +355,12 @@ private:
     uint64_t m_threadCount;
     uint64_t m_ticket;
     uint64_t m_typeSize;
+    
+    uint64_t* mg_freeIndex;
 
     static __thread char* m_base;
     static __thread uint64_t m_freeIndex;
+    static __thread uint64_t threadId;
 };
 
 template<typename T>
@@ -251,5 +368,8 @@ __thread char* Allocator<T>::m_base;
 
 template<typename T>
 __thread uint64_t Allocator<T>::m_freeIndex;
+
+template<typename T>
+__thread uint64_t Allocator<T>::threadId;
 
 #endif /* end of include guard: ALLOCATOR_H */

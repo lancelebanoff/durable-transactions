@@ -20,13 +20,13 @@ const int THREAD_COUNT = 2;
 static const int NUM_OF_TRANSACTIONS = 12;
 static const int TRANSACTION_SIZE = 2;
 
-static const char* NODE_ALLOCATOR_NAME = "m_nodeAllocator17";
-static const char* DESC_ALLOCATOR_NAME = "m_descAllocator17";
-static const char* NODE_DESC_ALLOCATOR_NAME = "m_nodeDescAllocator17";
+static const char* NODE_ALLOCATOR_NAME = "m_nodeAllocator19";
+static const char* DESC_ALLOCATOR_NAME = "m_descAllocator19";
+static const char* NODE_DESC_ALLOCATOR_NAME = "m_nodeDescAllocator19";
 
-static const char* NODE_ALLOCATOR_ALLOCATOR_NAME = "m_nodeAllocatorAllocator17";
-static const char* DESC_ALLOCATOR_ALLOCATOR_NAME = "m_descAllocatorAllocator17";
-static const char* NODE_DESC_ALLOCATOR_ALLOCATOR_NAME = "m_nodeDescAllocatorAllocator17";
+static const char* NODE_ALLOCATOR_ALLOCATOR_NAME = "m_nodeAllocatorAllocator19";
+static const char* DESC_ALLOCATOR_ALLOCATOR_NAME = "m_descAllocatorAllocator19";
+static const char* NODE_DESC_ALLOCATOR_ALLOCATOR_NAME = "m_nodeDescAllocatorAllocator19";
 
 
 void runThread(LockfreeList* list, int threadId)
@@ -326,17 +326,25 @@ void lftt_recovery() {
     m_descAllocatorAllocator.Init();
     m_nodeDescAllocatorAllocator.Init();
 
-    Allocator<TransList::Node>* m_nodeAllocator = m_nodeAllocatorAllocator.Alloc();
-    Allocator<TransList::Desc>* m_descAllocator = m_descAllocatorAllocator.Alloc();
-    Allocator<TransList::NodeDesc>* m_nodeDescAllocator = m_nodeDescAllocatorAllocator.Alloc();
+    Allocator<TransList::Node>* m_nodeAllocator = m_nodeAllocatorAllocator.getFirst();
+    Allocator<TransList::Desc>* m_descAllocator = m_descAllocatorAllocator.getFirst();
+    Allocator<TransList::NodeDesc>* m_nodeDescAllocator = m_nodeDescAllocatorAllocator.getFirst();
+
+    m_nodeAllocator->print();
 
     m_nodeAllocator->reload_mem(NODE_ALLOCATOR_NAME);
     m_descAllocator->reload_mem(DESC_ALLOCATOR_NAME);
     m_nodeDescAllocator->reload_mem(NODE_DESC_ALLOCATOR_NAME);
 
+    m_nodeAllocator->print();
+
     m_nodeAllocator->Init();
     m_descAllocator->Init();
     m_nodeDescAllocator->Init();
+
+    m_nodeAllocator->print();
+    m_descAllocator->print();
+    m_nodeDescAllocator->print();
 
 TransList* transList = new TransList(m_nodeAllocator, m_descAllocator, m_nodeDescAllocator, false);
 
@@ -352,6 +360,7 @@ pmem_durableds_logger logger(pmem_durableds_logger::log_severity_type::debug);
 int main()
 {
     logger.pmem_durableds_dlog("Hello World!\n\r");
+    // test_lftt_insert_only();
     // test_lftt_insert_delete();
     // test_lftt();  
     lftt_recovery(); 

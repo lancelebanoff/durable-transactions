@@ -26,11 +26,13 @@ TransList::TransList(Allocator<Node>* nodeAllocator, Allocator<Desc>* descAlloca
     , m_nodeDescAllocator(nodeDescAllocator)
 {
     if(newList) {
+        logger.pmem_durableds_dlog("TransList constructor was called as a newlist \n\r");
         m_tail = new (m_nodeAllocator->Alloc()) Node(0xffffffff, NULL, NULL);
         m_head = new (m_nodeAllocator->Alloc()) Node(0, m_tail, NULL);
     }else {
-        m_tail = m_nodeAllocator->Alloc();
-        m_head = m_nodeAllocator->Alloc();
+        logger.pmem_durableds_dlog("TransList constructor was called as an existing list \n\r");
+        m_tail = m_nodeAllocator->getFirst();
+        m_head = m_nodeAllocator->getNext(m_tail);
     }
 
 }
@@ -142,7 +144,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
     {
         if(__sync_bool_compare_and_swap(&desc->status, ACTIVE, ABORTED))
         {
-            DTX::PERSIST(&desc->status);
+            DTX::PERSIST(&desc);
             __sync_fetch_and_add(&g_count_abort, 1);
             __sync_fetch_and_add(&g_count_fake_abort, 1);
         }
@@ -200,7 +202,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         {
             // printf("transaction status was changed to committed: %d\n\r", desc->status);
             
-            DTX::PERSIST(&desc->status);
+            DTX::PERSIST(desc);
 
             // printf("after persist: %d\n\r", desc->status);
 
@@ -215,7 +217,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         logger.pmem_durableds_elog("transaction was failed!");
         if(__sync_bool_compare_and_swap(&desc->status, ACTIVE, ABORTED))
         {
-            DTX::PERSIST(&desc->status);
+            DTX::PERSIST(desc);
             logger.pmem_durableds_dlog("marked for deletion! \n\r");
             MarkForDeletion(insNodes, insPredNodes, desc);
             __sync_fetch_and_add(&g_count_abort, 1);
