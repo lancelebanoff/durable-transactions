@@ -338,7 +338,7 @@ void lftt_recovery() {
     m_descAllocator->Init();
     m_nodeDescAllocator->Init();
 
-    TransList* transList = new TransList(m_nodeAllocator, m_descAllocator, m_nodeDescAllocator, false);
+TransList* transList = new TransList(m_nodeAllocator, m_descAllocator, m_nodeDescAllocator, false);
 
     transList->Print();
 

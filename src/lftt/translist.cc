@@ -142,6 +142,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
     {
         if(__sync_bool_compare_and_swap(&desc->status, ACTIVE, ABORTED))
         {
+            DTX::PERSIST(&desc->status);
             __sync_fetch_and_add(&g_count_abort, 1);
             __sync_fetch_and_add(&g_count_fake_abort, 1);
         }
@@ -199,7 +200,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         {
             // printf("transaction status was changed to committed: %d\n\r", desc->status);
             
-            DTX::PERSIST(desc);
+            DTX::PERSIST(&desc->status);
 
             // printf("after persist: %d\n\r", desc->status);
 
@@ -214,6 +215,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         logger.pmem_durableds_elog("transaction was failed!");
         if(__sync_bool_compare_and_swap(&desc->status, ACTIVE, ABORTED))
         {
+            DTX::PERSIST(&desc->status);
             logger.pmem_durableds_dlog("marked for deletion! \n\r");
             MarkForDeletion(insNodes, insPredNodes, desc);
             __sync_fetch_and_add(&g_count_abort, 1);
@@ -225,6 +227,9 @@ inline TransList::ReturnCode TransList::Insert(uint32_t key, Desc* desc, uint8_t
 {
     inserted = NULL;
     NodeDesc* nodeDesc = new(m_nodeDescAllocator->Alloc()) NodeDesc(desc, opid);
+
+    DTX::PERSIST(nodeDesc);
+
     Node* new_node = NULL;
     Node* curr = m_head;
 
@@ -245,12 +250,11 @@ inline TransList::ReturnCode TransList::Insert(uint32_t key, Desc* desc, uint8_t
             //{
                 if(new_node == NULL)
                 {
-                    DTX::PERSIST(nodeDesc);
+                    
                     new_node = new(m_nodeAllocator->Alloc()) Node(key, NULL, nodeDesc);
-                    DTX::PERSIST(new_node);    
                 }
                 new_node->next = curr;
-                DTX::PERSIST(&new_node->next);
+                DTX::PERSIST(&new_node);
 
                 Node* pred_next = __sync_val_compare_and_swap(&pred->next, curr, new_node);
 
