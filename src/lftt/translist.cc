@@ -547,6 +547,18 @@ inline void TransList::LocatePred(Node*& pred, Node*& curr, uint32_t key)
     ASSERT(pred, "pred must be valid");
 }
 
+void TransList::CheckConsistency()
+{
+    Desc* curr = m_descAllocator->getFirst();
+    Desc* next = m_descAllocator->getNext(curr);
+    while(curr != nullptr) {
+        logger.pmem_durableds_dlog(curr->toString());
+        curr = next;
+        next = m_descAllocator->getNext(next);
+    }
+}
+
+
 void TransList::Print()
 {
     Node* curr = m_head->next;

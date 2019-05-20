@@ -42,7 +42,19 @@ public:
     {
         static size_t SizeOf(uint8_t size)
         {
-            return sizeof(uint8_t) + sizeof(uint8_t) + sizeof(Operator) * size;
+            // return sizeof(uint8_t) + sizeof(uint8_t) + sizeof(Operator) * size;
+            return sizeof(Desc) + sizeof(Operator) * size;
+        }
+
+        std::string toString()
+        {   
+            std::string str = "status= " + std::to_string(status) + "\n";
+            str += "size= " + std::to_string(size) + "\n\t";
+            for(int i = 0; i < size; i++) {
+                str += "ops[" + std::to_string(i) + "]: type= " + std::to_string(ops[i].type) +  ", key=" + std::to_string(ops[i].key) + "\n\t";
+            }
+            return str;
+
         }
 
         // Status of the transaction: values in [0, size] means live txn, values -1 means aborted, value -2 means committed.
@@ -119,6 +131,7 @@ public:
     Desc* AllocateDesc(uint8_t size);
     void ResetMetrics();
     void Print();
+    void CheckConsistency();
 
 private:
     ReturnCode Insert(uint32_t key, Desc* desc, uint8_t opid, Node*& inserted, Node*& pred);

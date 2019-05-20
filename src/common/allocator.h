@@ -293,7 +293,7 @@ public:
     //Every thread need to call init once before any allocation
     void Init()
     {
-        uint64_t threadId = __sync_fetch_and_add(&m_ticket, 1);
+        threadId = __sync_fetch_and_add(&m_ticket, 1);
         ASSERT(threadId < m_threadCount, "ThreadId specified should be smaller than thread count.");
         m_base = m_pool + threadId * m_totalBytes / m_threadCount;
         if(isReloadedMem) {
@@ -314,9 +314,29 @@ public:
     DataType* getNext(DataType* p)
     {
         ASSERT((char*)p + m_typeSize < m_base + m_totalBytes / m_threadCount, "out of capacity.");
+        ASSERT((char*)p + m_typeSize < m_base + m_freeIndex, "end of used area");
+        // printf("first=%p, second=%p\n\r", (char*)p + m_typeSize, m_base + m_freeIndex);
+        if((char*)p + m_typeSize >= m_base + m_freeIndex)
+            return nullptr;
         char* ret = (char*)p + m_typeSize;
         return (DataType*)ret;
     }    
+
+    DataType* getFirstForThread(int t)
+    {
+        char* ret_base = m_pool + t * m_totalBytes / m_threadCount;
+        return (DataType*)ret_base;
+    }
+
+    DataType* getNextForThread(DataType* p, int t)
+    {
+        char* ret_base = m_pool + t * m_totalBytes / m_threadCount;
+
+        if((char*)p + m_typeSize >= ret_base + mg_freeIndex[t])
+            return nullptr;
+        char* ret = (char*)p + m_typeSize;
+        return (DataType*)ret;
+    }        
 
 
     void Uninit()
