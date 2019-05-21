@@ -12,6 +12,7 @@
 #include "translist.h"
 #include "../durabletxn/dtx.h"
 #include "../logging.h"
+#include "../crashTest.h"
 
 #define SET_MARK(_p)    ((Node *)(((uintptr_t)(_p)) | 1))
 #define CLR_MARK(_p)    ((Node *)(((uintptr_t)(_p)) & ~1))
@@ -19,6 +20,9 @@
 #define IS_MARKED(_p)     (((uintptr_t)(_p)) & 1)
 
 extern pmem_durableds_logger logger;
+extern CrashTest pmem_ct;
+extern uint64_t operation_global_counter;
+
 __thread TransList::HelpStack helpStack;
 
 TransList::TransList(Allocator<Node>* nodeAllocator, Allocator<Desc>* descAllocator, Allocator<NodeDesc>* nodeDescAllocator, bool newList)
@@ -122,11 +126,19 @@ inline void TransList::MarkForDeletion(const std::vector<Node*>& nodes, const st
                 if(__sync_bool_compare_and_swap(&n->nodeDesc, nodeDesc, SET_MARK(nodeDesc)))
                 {
                     DTX::PERSIST(&n->nodeDesc);
+
+                    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_MARK_FOR_DELETION_NODE_DESC_UPDATE);
+                    
                     Node* pred = preds[i];
                     Node* succ = CLR_MARK(__sync_fetch_and_or(&n->next, 0x1));
                     DTX::PERSIST(&n->next);
+
+                    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_MARK_FOR_DELETION_POINTER_MARK);
+                    
                     __sync_bool_compare_and_swap(&pred->next, n, succ);
                     DTX::PERSIST(&pred->next);
+
+                    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_MARK_FOR_DELETION_PRED_NEXT_UPDATE);
                 }
             }
         }
@@ -146,6 +158,9 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         if(__sync_bool_compare_and_swap(&desc->status, ACTIVE, ABORTED))
         {
             DTX::PERSIST(&desc);
+
+            CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_HELP_OPS_ABORT1);
+
             __sync_fetch_and_add(&g_count_abort, 1);
             __sync_fetch_and_add(&g_count_fake_abort, 1);
         }
@@ -201,9 +216,12 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         // printf("transaction was succesfull \n\r");
         if(__sync_bool_compare_and_swap(&desc->status, ACTIVE, COMMITTED))
         {
+            __sync_fetch_and_add(&operation_global_counter, desc->size);
             // printf("transaction status was changed to committed: %d\n\r", desc->status);
             
             DTX::PERSIST(desc);
+
+            CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_HELP_OPS_COMMIT);
 
             // printf("after persist: %d\n\r", desc->status);
 
@@ -219,6 +237,9 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         if(__sync_bool_compare_and_swap(&desc->status, ACTIVE, ABORTED))
         {
             DTX::PERSIST(desc);
+
+            CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_HELP_OPS_ABORT2);
+
             logger.pmem_durableds_dlog("marked for deletion! \n\r");
             MarkForDeletion(insNodes, insPredNodes, desc);
             __sync_fetch_and_add(&g_count_abort, 1);
@@ -232,6 +253,8 @@ inline TransList::ReturnCode TransList::Insert(uint32_t key, Desc* desc, uint8_t
     NodeDesc* nodeDesc = new(m_nodeDescAllocator->Alloc()) NodeDesc(desc, opid);
 
     DTX::PERSIST(nodeDesc);
+
+    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_INSERT_NODE_DESC_CREATE);
 
     Node* new_node = NULL;
     Node* curr = m_head;
@@ -259,9 +282,13 @@ inline TransList::ReturnCode TransList::Insert(uint32_t key, Desc* desc, uint8_t
                 new_node->next = curr;
                 DTX::PERSIST(&new_node);
 
+                CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_INSERT_NEW_NODE_CREATE);
+
                 Node* pred_next = __sync_val_compare_and_swap(&pred->next, curr, new_node);
 
                 DTX::PERSIST(&pred->next);
+
+                CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_INSERT_PRED_NEXT_SET);
 
                 if(pred_next == curr)
                 {
@@ -289,6 +316,9 @@ inline TransList::ReturnCode TransList::Insert(uint32_t key, Desc* desc, uint8_t
                 {
                     (__sync_fetch_and_or(&curr->next, 0x1));
                     DTX::PERSIST(&curr->next);
+
+                    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_INSERT_POINTER_MARK);
+
                 }
                 curr = m_head;
                 continue;
@@ -315,6 +345,9 @@ inline TransList::ReturnCode TransList::Insert(uint32_t key, Desc* desc, uint8_t
                     //Update desc 
                     currDesc = __sync_val_compare_and_swap(&curr->nodeDesc, oldCurrDesc, nodeDesc);
                     DTX::PERSIST(&curr->nodeDesc);
+
+                    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_INSERT_NODE_DESC_UPDATE);
+
 
                     if(currDesc == oldCurrDesc)
                     {
@@ -382,8 +415,14 @@ inline TransList::ReturnCode TransList::Delete(uint32_t key, Desc* desc, uint8_t
                 {
                     //Update desc 
                     DTX::PERSIST(nodeDesc);
+
+                    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_DELETE_NODE_DESC_CREATE);
+
                     currDesc = __sync_val_compare_and_swap(&curr->nodeDesc, oldCurrDesc, nodeDesc);
                     DTX::PERSIST(&curr->nodeDesc);
+
+
+                    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_DELETE_NODE_DESC_UPDATE);
 
                     if(currDesc == oldCurrDesc)
                     {
@@ -436,6 +475,9 @@ inline TransList::ReturnCode TransList::Find(uint32_t key, Desc* desc, uint8_t o
                 {
                     (__sync_fetch_and_or(&curr->next, 0x1));
                     DTX::PERSIST(&curr->next);
+
+                    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_FIND_POINTER_MARK);
+
                 }
                 curr = m_head;
                 continue;
@@ -463,8 +505,13 @@ inline TransList::ReturnCode TransList::Find(uint32_t key, Desc* desc, uint8_t o
                 {
                     //Update desc 
                     DTX::PERSIST(nodeDesc);
+
+                    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_FIND_NODE_DESC_CREATE);
+
                     currDesc = __sync_val_compare_and_swap(&curr->nodeDesc, oldCurrDesc, nodeDesc);
                     DTX::PERSIST(&curr->nodeDesc);
+
+                    CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_FIND_NODE_DESC_UPDATE);
 
                     if(currDesc == oldCurrDesc)
                     {
@@ -539,6 +586,9 @@ inline void TransList::LocatePred(Node*& pred, Node*& curr, uint32_t key)
             } 
             else {
                 DTX::PERSIST(&pred->next);
+
+                CHECK_FOR_CRASH(CrashTest::CrashPoints::AFTER_LOCATE_PRED_NEXT_UPDATE);
+
             }
 
             //__sync_bool_compare_and_swap(&pred->next, pred_next, curr);

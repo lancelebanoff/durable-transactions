@@ -4,6 +4,7 @@ bin_PROGRAMS = trans
 
 trans_SOURCES = main.cc \
 				logging.cc\
+				crashTest.cc \
 				common/allocator.cc\
 				common/timehelper.cc\
 				common/assert.cc\

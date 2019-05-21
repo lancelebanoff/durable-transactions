@@ -12,8 +12,9 @@
 #include "lftt/translist.h"
 #include "durabletxn/dtx.h"
 #include "logging.h"
+#include "crashTest.h"
 
-// #define RUN_COUNTER 19
+#define RUN_COUNTER "32"
 
 using namespace std;
 
@@ -22,16 +23,17 @@ const int THREAD_COUNT = 2;
 static const int NUM_OF_TRANSACTIONS = 12;
 static const int TRANSACTION_SIZE = 2;
 
+uint64_t operation_global_counter = 0;
+uint64_t operation_global_total = THREAD_COUNT * NUM_OF_TRANSACTIONS * TRANSACTION_SIZE;
 
 
+static const char *NODE_ALLOCATOR_NAME = "m_nodeAllocator" RUN_COUNTER;
+static const char *DESC_ALLOCATOR_NAME = "m_descAllocator" RUN_COUNTER;
+static const char *NODE_DESC_ALLOCATOR_NAME = "m_nodeDescAllocator" RUN_COUNTER;
 
-static const char *NODE_ALLOCATOR_NAME = "m_nodeAllocator23";
-static const char *DESC_ALLOCATOR_NAME = "m_descAllocator23";
-static const char *NODE_DESC_ALLOCATOR_NAME = "m_nodeDescAllocator23";
-
-static const char *NODE_ALLOCATOR_ALLOCATOR_NAME = "m_nodeAllocatorAllocator23";
-static const char *DESC_ALLOCATOR_ALLOCATOR_NAME = "m_descAllocatorAllocator23";
-static const char *NODE_DESC_ALLOCATOR_ALLOCATOR_NAME = "m_nodeDescAllocatorAllocator23";
+static const char *NODE_ALLOCATOR_ALLOCATOR_NAME = "m_nodeAllocatorAllocator" RUN_COUNTER;
+static const char *DESC_ALLOCATOR_ALLOCATOR_NAME = "m_descAllocatorAllocator" RUN_COUNTER;
+static const char *NODE_DESC_ALLOCATOR_ALLOCATOR_NAME = "m_nodeDescAllocatorAllocator" RUN_COUNTER;
 
 void runThread(LockfreeList *list, int threadId)
 {
@@ -106,7 +108,7 @@ void runDurableLFTTThreadInsertOnly(TransList *list, int threadId, Allocator<Tra
         for (uint32_t i = 0; i < TRANSACTION_SIZE; ++i)
         {
             desc->ops[i].type = TransList::OpType::INSERT;
-            desc->ops[i].key = (threadId + 1) * 1000 + (t + 1) * 10 + (i + 1);
+            desc->ops[i].key = (threadId + 1) + (t + 1) * 1000 + (i + 1) * 100;
             DTX::PERSIST(&(desc->ops[i]));
         }
 
@@ -426,13 +428,14 @@ void lftt_recovery()
 }
 
 pmem_durableds_logger logger(pmem_durableds_logger::log_severity_type::debug);
+CrashTest pmem_ct;
 
 int main()
 {
     logger.pmem_durableds_dlog("Hello World!\n\r");
-    // test_lftt_insert_only();
+    test_lftt_insert_only();
     // test_lftt_insert_delete();
     // test_lftt();
-    lftt_recovery();
+    // lftt_recovery();
     logger.pmem_durableds_dlog("Goodbye World!\n\r");
 }
