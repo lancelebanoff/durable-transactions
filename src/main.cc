@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <thread>
+#include <set>
 
 #include "lockfreelist/lockfreelist.h"
 #include "boostinglist/boostinglist.h"
@@ -306,6 +307,78 @@ void runRecoveryDurableLFTTThread(TransList *list, int threadId, Allocator<Trans
     // }
 }
 
+void checkConsistency(Allocator<TransList::Desc> *m_descAllocator, TransList *transList)
+{
+    logger.pmem_durableds_dlog("checking consistency ...\n\r");
+
+    std::map<int,int> keyChecksum;
+    std::vector<TransList::Desc*> unCommittedTx;
+
+    for(int i = 0; i < THREAD_COUNT; i++) {
+        TransList::Desc *curr = m_descAllocator->getFirstForThread(i);
+        TransList::Desc *next = m_descAllocator->getNextForThread(curr, i);
+        while(curr != nullptr) {
+            // printf("curr=%p\n\r", curr);
+            // logger.pmem_durableds_dlog(curr->toString());
+            if(curr->isCommitted()) {
+
+                for(int i = 0; i < curr->size; i++) {
+                    int newVal = 0;
+                    switch(curr->ops[i].type) {
+                        case TransList::OpType::INSERT:
+                            newVal = 1;
+                        break;
+                        case TransList::OpType::DELETE:
+                            newVal = -1;
+                        break;
+                        default:
+                        continue;
+                    }                
+                    std::map<int,int>::iterator it = keyChecksum.find(curr->ops[i].key);
+                    if(it == keyChecksum.end()) {
+                        keyChecksum[curr->ops[i].key] = newVal;
+                    } else {
+                        keyChecksum[curr->ops[i].key] += newVal;
+                    }
+                }
+
+            }else if(curr->isInProgress()){
+                unCommittedTx.push_back(curr);
+            }
+
+            curr = next;
+            next = m_descAllocator->getNextForThread(next, i);
+        }
+    }
+
+    std::set<int> existingKeySet;
+    for (std::map<int,int>::iterator it=keyChecksum.begin(); it!=keyChecksum.end(); ++it) {
+        if(it->second == 1) {
+            existingKeySet.insert(it->first);
+        }else if(it->second == 0) {
+            // this shouldn't be in the list.
+        } else {
+            logger.pmem_durableds_elog("something is wrong with the key: ", it->first, " the checksum is ", it->first);        
+        }
+    }
+    logger.pmem_durableds_dlog("Consistency Report:\n\tKey => Checksum");
+    for (std::map<int,int>::iterator it=keyChecksum.begin(); it!=keyChecksum.end(); ++it)
+        logger.pmem_durableds_dlog("\t",  it->first , " => " , it->second);
+    
+    if(unCommittedTx.size() > 0) {
+        logger.pmem_durableds_dlog("The following transactions were not committed or aborted:");
+        for(std::vector<TransList::Desc*>::iterator it = unCommittedTx.begin(); it != unCommittedTx.end(); ++it) {
+            logger.pmem_durableds_dlog("\t", (*it)->toString());
+        }
+    }
+
+    transList->CheckConsistency(existingKeySet);
+    
+
+    
+    logger.pmem_durableds_dlog("\nend of consistency check\n\r");
+}
+
 void lftt_recovery()
 {
 
@@ -343,22 +416,13 @@ void lftt_recovery()
 
     // transList->CheckConsistency();
 
-    for(int i = 0; i < THREAD_COUNT; i++) {
-        TransList::Desc *curr = m_descAllocator->getFirstForThread(i);
-        TransList::Desc *next = m_descAllocator->getNextForThread(curr, i);
-        while(curr != nullptr) {
-            printf("curr=%p\n\r", curr);
-            logger.pmem_durableds_dlog(curr->toString());
-            curr = next;
-            next = m_descAllocator->getNextForThread(next, i);
-        }
-    }
+    checkConsistency(m_descAllocator, transList);
 
     
 
 
 
-    logger.pmem_durableds_dlog("after transList->Print()\n\r");
+    logger.pmem_durableds_dlog("end of recovery\n\r");
 }
 
 pmem_durableds_logger logger(pmem_durableds_logger::log_severity_type::debug);

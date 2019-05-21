@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <set>
 // #include "common/assert.h"
 #include "../common/allocator.h"
 
@@ -56,6 +57,16 @@ public:
             return str;
 
         }
+
+        inline bool isCommitted()
+        {
+            return status == COMMITTED;
+        }
+
+        inline bool isInProgress()
+        {
+            return status == ACTIVE;
+        }        
 
         // Status of the transaction: values in [0, size] means live txn, values -1 means aborted, value -2 means committed.
         volatile uint8_t status;
@@ -131,7 +142,7 @@ public:
     Desc* AllocateDesc(uint8_t size);
     void ResetMetrics();
     void Print();
-    void CheckConsistency();
+    void CheckConsistency(std::set<int> existingKeySet);
 
 private:
     ReturnCode Insert(uint32_t key, Desc* desc, uint8_t opid, Node*& inserted, Node*& pred);

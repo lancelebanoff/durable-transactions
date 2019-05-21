@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <new>
+#include <set>
 #include "translist.h"
 #include "../durabletxn/dtx.h"
 #include "../logging.h"
@@ -547,14 +548,28 @@ inline void TransList::LocatePred(Node*& pred, Node*& curr, uint32_t key)
     ASSERT(pred, "pred must be valid");
 }
 
-void TransList::CheckConsistency()
+void TransList::CheckConsistency(std::set<int> existingKeySet)
 {
-    Desc* curr = m_descAllocator->getFirst();
-    Desc* next = m_descAllocator->getNext(curr);
-    while(curr != nullptr) {
-        logger.pmem_durableds_dlog(curr->toString());
-        curr = next;
-        next = m_descAllocator->getNext(next);
+    Node* curr = m_head->next;
+    while(curr != m_tail) {
+        std::set<int>::iterator it = existingKeySet.find(curr->key);
+        if(it == existingKeySet.end()) {
+            if(IsKeyExist(CLR_MARKD(curr->nodeDesc))) {
+                logger.pmem_durableds_elog("Error: something is wrong with the key: ", curr->key, " it is not supposed to be in the list ");        
+            } else {
+                logger.pmem_durableds_dlog( curr->key, " is in the list, but is marked for deletion ");        
+            }
+        } else {
+            logger.pmem_durableds_dlog( curr->key, " is in the list");
+            existingKeySet.erase(it);
+        }
+        curr = CLR_MARK(curr->next);
+    }
+    if(existingKeySet.size() > 0) {
+        logger.pmem_durableds_elog("The following elements were supposed to be in the list, but they were not found:");
+        for(std::set<int>::iterator it = existingKeySet.begin(); it != existingKeySet.end(); ++it) {
+            logger.pmem_durableds_elog("\t", *it);
+        }
     }
 }
 
