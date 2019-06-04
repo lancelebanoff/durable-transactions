@@ -9,7 +9,7 @@
 #include <cstdio>
 #include <new>
 #include "translist.h"
-#include "../../durabletxn/dtx.h"
+
 
 #define SET_MARK(_p)    ((Node *)(((uintptr_t)(_p)) | 1))
 #define CLR_MARK(_p)    ((Node *)(((uintptr_t)(_p)) & ~1))
@@ -119,6 +119,29 @@ inline void TransList::MarkForDeletion(const std::vector<Node*>& nodes, const st
     }
 }
 
+
+PERSIST_CODE
+(
+
+inline bool TransList::needPersistenceHelp(Desc* desc)
+{
+    return desc->persistStatus != PERSISTED;
+}
+
+inline void TransList::persistDesc(Desc* desc)
+{
+    for(int i = 0; i < desc->size; i++) 
+    {
+        DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
+    }
+    DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
+    DTX::PERSIST_BARRIER_ONLY();
+    desc->persistStatus = PERSISTED;
+}
+
+)
+
+
 inline void TransList::HelpOps(Desc* desc, uint8_t opid)
 {
     if(desc->status != ACTIVE)
@@ -126,8 +149,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         bool needHelp = false;
         PERSIST_CODE
         (
-            if(desc->persistStatus != PERSISTED)
-                needHelp = true;
+            needHelp = needHelp && needPersistenceHelp(desc);
         )
         if(!needHelp)
             return;
@@ -142,22 +164,10 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
             (
                 if(__sync_bool_compare_and_swap(&desc->persistStatus, MAYBE, IN_PROGRESS)) 
                 {
-                    for(int i = 0; i < desc->size; i++) 
-                    {
-                        DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
-                    }
-                    DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
-                    DTX::PERSIST_BARRIER_ONLY();
-                    desc->persistStatus = PERSISTED;
+                    persistDesc(desc);
                 }else if(desc->persistStatus == IN_PROGRESS)
                 {
-                    for(int i = 0; i < desc->size; i++) 
-                    {
-                        DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
-                    }
-                    DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
-                    DTX::PERSIST_BARRIER_ONLY();
-                    desc->persistStatus = PERSISTED;
+                    persistDesc(desc);
                 }
 
             )            
@@ -166,29 +176,16 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         }else {
             PERSIST_CODE
             (
-                if(desc->persistStatus != PERSISTED) 
+                if(needPersistenceHelp(desc)) 
                 {
                     if(__sync_bool_compare_and_swap(&desc->persistStatus, MAYBE, IN_PROGRESS)) 
                     {
-                        for(int i = 0; i < desc->size; i++) 
-                        {
-                            DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
-                        }
-                        DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
-                        DTX::PERSIST_BARRIER_ONLY();
-                        desc->persistStatus = PERSISTED;
+                        persistDesc(desc);
                     }else if(desc->persistStatus == IN_PROGRESS)
                     {
-                        for(int i = 0; i < desc->size; i++) 
-                        {
-                            DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
-                        }
-                        DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
-                        DTX::PERSIST_BARRIER_ONLY();
-                        desc->persistStatus = PERSISTED;
+                        persistDesc(desc);
                     }
                 }
-                    
             )            
         }
 
@@ -242,13 +239,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
             PERSIST_CODE
             (
                 desc->persistStatus = IN_PROGRESS;
-                for(int i = 0; i < desc->size; i++) 
-                {
-                    DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
-                }
-                DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
-                DTX::PERSIST_BARRIER_ONLY();
-                desc->persistStatus = PERSISTED;
+                persistDesc(desc);
             )
             
             MarkForDeletion(delNodes, delPredNodes, desc);
@@ -262,13 +253,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
             PERSIST_CODE
             (
                 desc->persistStatus = IN_PROGRESS;
-                for(int i = 0; i < desc->size; i++) 
-                {
-                    DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
-                }
-                DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
-                DTX::PERSIST_BARRIER_ONLY();
-                desc->persistStatus = PERSISTED;
+                persistDesc(desc);
             )
             MarkForDeletion(insNodes, insPredNodes, desc);
             __sync_fetch_and_add(&g_count_abort, 1);

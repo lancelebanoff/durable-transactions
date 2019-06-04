@@ -6,6 +6,8 @@
 #include "../../common/assert.h"
 #include "../../common/allocator.h"
 
+#include "../../durabletxn/dtx.h"
+
 class TransList
 {
 public:
@@ -156,6 +158,12 @@ private:
         uint32_t g_count_del = 0;
         uint32_t g_count_del_new = 0;
         uint32_t g_count_fnd = 0;
+    )
+
+    PERSIST_CODE
+    (
+        bool needPersistenceHelp(Desc* desc);
+        void persistDesc(Desc* desc);
     )
 
     uint32_t g_count_commit = 0;

@@ -50,8 +50,8 @@ struct LogEntry
 
 enum TxStatus
 {
-    ACTIVE,
-    COMMITTED
+    TxStatus_ACTIVE,
+    TxStatus_COMMITTED
 };
 
 /* 
@@ -113,7 +113,7 @@ public:
     {
     #ifdef USING_DURABLE_TXN
         log->Init();
-        log->status = ACTIVE;
+        log->status = TxStatus_ACTIVE;
         PERSIST(&(log->status), 1);
     #endif
     }
@@ -124,7 +124,7 @@ public:
     static void TX_COMMIT()
     {
     #ifdef USING_DURABLE_TXN
-        log->status = COMMITTED;
+        log->status = TxStatus_COMMITTED;
         PERSIST(&(log->status), 1);
         log->Uninit();
     #endif
