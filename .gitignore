@@ -1,2 +1,10 @@
 # Ignore vscode
 .vscode/
+acinclude/
+autom4te.cache/
+bin/
+configure
+src/Makefile
+Makefile.in
+aclocal.m4
+src/config.h.in~
