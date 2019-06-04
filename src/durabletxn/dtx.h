@@ -6,8 +6,30 @@
 #include <boost/any.hpp>
 #include "../lockfreelist/lockfreelist.h"
 
+
+#define FLUSH_ALIGN ((uintptr_t)64)
 // Preprocessor parameter that determines whether or not to provide durability
 #define USING_DURABLE_TXN 1
+
+
+// #define USE_MMAP_FILE
+#define ENABLE_PERSISTENCE
+
+
+
+
+#if defined ENABLE_PERSISTENCE
+    #define PERSIST_CODE( persistCode ) persistCode
+
+    #define DTX_PERSIST_FLUSH( MEM_TO_PERSIST, MEM_LEN_TO_PERSIST ) (  DTX::PERSIST_FLUSH_ONLY(MEM_TO_PERSIST, MEM_LEN_TO_PERSIST) )
+
+    #define DTX_PERSIST_BARRIER( ) (  DTX::PERSIST_BARRIER_ONLY() )
+    
+#else
+    #define DTX_PERSIST_FLUSH( MEM_TO_PERSIST, MEM_LEN_TO_PERSIST )
+    #define DTX_PERSIST_BARRIER( ) 
+    #define PERSIST_CODE( persistCode )
+#endif
 
 /* 
  * A single entry in the undo log.
@@ -92,7 +114,7 @@ public:
     #ifdef USING_DURABLE_TXN
         log->Init();
         log->status = ACTIVE;
-        PERSIST(&(log->status));
+        PERSIST(&(log->status), 1);
     #endif
     }
 
@@ -103,7 +125,7 @@ public:
     {
     #ifdef USING_DURABLE_TXN
         log->status = COMMITTED;
-        PERSIST(&(log->status));
+        PERSIST(&(log->status), 1);
         log->Uninit();
     #endif
     }
@@ -117,7 +139,7 @@ public:
     {
     #ifdef USING_DURABLE_TXN
         log->Push(ptr, *ptr);
-        PERSIST(ptr);
+        PERSIST(ptr, 1);
     #endif
     }
 
@@ -125,14 +147,53 @@ public:
      * A persistence barrier.
      * Inputs a pointer, and flushes the contents of that pointer, followed by an SFENCE.
      */
-    template <typename T>
-    static void PERSIST(T* ptr)
+    // template <typename T>
+    static void PERSIST(const void *addr, size_t len)
     {
     #ifdef USING_DURABLE_TXN
-        _mm_clflush(ptr);
+
+	uintptr_t uptr;
+
+	/*
+	 * Loop through cache-line-size (typically 64B) aligned chunks
+	 * covering the given range.
+	 */
+	for (uptr = (uintptr_t)addr & ~(FLUSH_ALIGN - 1);
+		uptr < (uintptr_t)addr + len * 100; uptr += FLUSH_ALIGN) 
+        {
+            _mm_clflush((char *)uptr);
+        }
         _mm_sfence();
     #endif
     }
+
+    static void PERSIST_FLUSH_ONLY(const void *addr, size_t len)
+    {
+    #ifdef USING_DURABLE_TXN
+
+	uintptr_t uptr;
+
+	/*
+	 * Loop through cache-line-size (typically 64B) aligned chunks
+	 * covering the given range.
+	 */
+	for (uptr = (uintptr_t)addr & ~(FLUSH_ALIGN - 1);
+		uptr < (uintptr_t)addr + len * 100; uptr += FLUSH_ALIGN) 
+        {
+            _mm_clflush((char *)uptr);
+            printf("%p %lu %p\n\r", addr, (len*100), uptr);
+        }
+        
+
+    #endif
+    }    
+
+    static void PERSIST_BARRIER_ONLY()
+    {
+    #ifdef USING_DURABLE_TXN
+        _mm_sfence();
+    #endif
+    }    
 
     /* 
      * TODO:
