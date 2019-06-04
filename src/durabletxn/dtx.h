@@ -181,7 +181,6 @@ public:
 		uptr < (uintptr_t)addr + len * 100; uptr += FLUSH_ALIGN) 
         {
             _mm_clflush((char *)uptr);
-            printf("%p %lu %p\n\r", addr, (len*100), uptr);
         }
         
 

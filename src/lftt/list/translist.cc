@@ -50,6 +50,7 @@ TransList::Desc* TransList::AllocateDesc(uint8_t size)
     Desc* desc = m_descAllocator->Alloc();
     desc->size = size;
     desc->status = ACTIVE;
+    desc->persistStatus = MAYBE;
     
     return desc;
 }
@@ -122,7 +123,14 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
 {
     if(desc->status != ACTIVE)
     {
-        return;
+        bool needHelp = false;
+        PERSIST_CODE
+        (
+            if(desc->persistStatus != PERSISTED)
+                needHelp = true;
+        )
+        if(!needHelp)
+            return;
     }
 
     //Cyclic dependcy check
@@ -132,15 +140,56 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         {
             PERSIST_CODE
             (
-                for(int i = 0; i < desc->size; i++) 
+                if(__sync_bool_compare_and_swap(&desc->persistStatus, MAYBE, IN_PROGRESS)) 
                 {
-                    DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
+                    for(int i = 0; i < desc->size; i++) 
+                    {
+                        DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
+                    }
+                    DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
+                    DTX::PERSIST_BARRIER_ONLY();
+                    desc->persistStatus = PERSISTED;
+                }else if(desc->persistStatus == IN_PROGRESS)
+                {
+                    for(int i = 0; i < desc->size; i++) 
+                    {
+                        DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
+                    }
+                    DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
+                    DTX::PERSIST_BARRIER_ONLY();
+                    desc->persistStatus = PERSISTED;
                 }
-                DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
-                DTX::PERSIST_BARRIER_ONLY();
+
             )            
             __sync_fetch_and_add(&g_count_abort, 1);
             __sync_fetch_and_add(&g_count_fake_abort, 1);
+        }else {
+            PERSIST_CODE
+            (
+                if(desc->persistStatus != PERSISTED) 
+                {
+                    if(__sync_bool_compare_and_swap(&desc->persistStatus, MAYBE, IN_PROGRESS)) 
+                    {
+                        for(int i = 0; i < desc->size; i++) 
+                        {
+                            DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
+                        }
+                        DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
+                        DTX::PERSIST_BARRIER_ONLY();
+                        desc->persistStatus = PERSISTED;
+                    }else if(desc->persistStatus == IN_PROGRESS)
+                    {
+                        for(int i = 0; i < desc->size; i++) 
+                        {
+                            DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
+                        }
+                        DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
+                        DTX::PERSIST_BARRIER_ONLY();
+                        desc->persistStatus = PERSISTED;
+                    }
+                }
+                    
+            )            
         }
 
         return;
@@ -192,12 +241,14 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         {
             PERSIST_CODE
             (
+                desc->persistStatus = IN_PROGRESS;
                 for(int i = 0; i < desc->size; i++) 
                 {
                     DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
                 }
                 DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
                 DTX::PERSIST_BARRIER_ONLY();
+                desc->persistStatus = PERSISTED;
             )
             
             MarkForDeletion(delNodes, delPredNodes, desc);
@@ -210,12 +261,14 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         {
             PERSIST_CODE
             (
+                desc->persistStatus = IN_PROGRESS;
                 for(int i = 0; i < desc->size; i++) 
                 {
                     DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
                 }
                 DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
                 DTX::PERSIST_BARRIER_ONLY();
+                desc->persistStatus = PERSISTED;
             )
             MarkForDeletion(insNodes, insPredNodes, desc);
             __sync_fetch_and_add(&g_count_abort, 1);
@@ -485,7 +538,14 @@ inline void TransList::FinishPendingTxn(NodeDesc* nodeDesc, Desc* desc)
 
 inline bool TransList::IsNodeActive(NodeDesc* nodeDesc)
 {
-    return nodeDesc->desc->status == COMMITTED;
+    bool ret = (nodeDesc->desc->status == COMMITTED);
+
+    PERSIST_CODE
+    (
+        ret = ret && (nodeDesc->desc->persistStatus == PERSISTED);
+    )
+
+    return ret;
 }
 
 inline bool TransList::IsKeyExist(NodeDesc* nodeDesc)

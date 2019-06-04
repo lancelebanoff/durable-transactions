@@ -16,6 +16,13 @@ public:
         ABORTED,
     };
 
+    enum PersistStatus
+    {
+        MAYBE = 0,
+        IN_PROGRESS,
+        PERSISTED,
+    };    
+
     enum ReturnCode
     {
         OK = 0,
@@ -45,6 +52,7 @@ public:
 
         // Status of the transaction: values in [0, size] means live txn, values -1 means aborted, value -2 means committed.
         volatile uint8_t status;
+        volatile uint8_t persistStatus;
         uint8_t size;
         Operator ops[];
     };
