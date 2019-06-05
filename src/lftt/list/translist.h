@@ -49,7 +49,8 @@ public:
     {
         static size_t SizeOf(uint8_t size)
         {
-            return sizeof(uint8_t) + sizeof(uint8_t) + sizeof(Operator) * size;
+            // return sizeof(uint8_t) + sizeof(uint8_t) + sizeof(Operator) * size;
+            return sizeof(Desc) + sizeof(Operator) * size;
         }
 
         // Status of the transaction: values in [0, size] means live txn, values -1 means aborted, value -2 means committed.
