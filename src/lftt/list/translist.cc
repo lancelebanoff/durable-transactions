@@ -149,7 +149,7 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         bool needHelp = false;
         PERSIST_CODE
         (
-            needHelp = needHelp && needPersistenceHelp(desc);
+            needHelp = needPersistenceHelp(desc);
         )
         if(!needHelp)
             return;
@@ -238,9 +238,14 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         {
             PERSIST_CODE
             (
-                desc->persistStatus = IN_PROGRESS;
-                persistDesc(desc);
-            )
+                if(__sync_bool_compare_and_swap(&desc->persistStatus, MAYBE, IN_PROGRESS))
+                {
+                    persistDesc(desc);
+                }else if(desc->persistStatus == IN_PROGRESS)
+                {
+                    persistDesc(desc);
+                }
+            )  
             
             MarkForDeletion(delNodes, delPredNodes, desc);
             __sync_fetch_and_add(&g_count_commit, 1);
@@ -252,9 +257,15 @@ inline void TransList::HelpOps(Desc* desc, uint8_t opid)
         {
             PERSIST_CODE
             (
-                desc->persistStatus = IN_PROGRESS;
-                persistDesc(desc);
-            )
+                if(__sync_bool_compare_and_swap(&desc->persistStatus, MAYBE, IN_PROGRESS))
+                {
+                    persistDesc(desc);
+                }else if(desc->persistStatus == IN_PROGRESS)
+                {
+                    persistDesc(desc);
+                }
+
+            )  
             MarkForDeletion(insNodes, insPredNodes, desc);
             __sync_fetch_and_add(&g_count_abort, 1);
         }     

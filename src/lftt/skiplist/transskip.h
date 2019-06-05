@@ -75,10 +75,14 @@ struct Desc
 {
     static size_t SizeOf(uint8_t size)
     {
-        return sizeof(uint8_t) + sizeof(uint8_t) + sizeof(Operator) * size;
+        // return sizeof(uint8_t) + sizeof(uint8_t) + sizeof(Operator) * size;
+        return sizeof(Desc) + sizeof(Operator) * size;
     }
 
     volatile uint8_t status;
+    
+    volatile uint8_t persistStatus;
+
     uint8_t size;
     Operator ops[];
 };

@@ -28,10 +28,12 @@
 #include <vector>
 extern "C"
 {
-#include "common/fraser/portable_defns.h"
-#include "common/fraser/ptst.h"
+#include "../../common/fraser/portable_defns.h"
+#include "../../common/fraser/ptst.h"
 }
 #include "transskip.h"
+#include "../../durabletxn/dtx.h"
+
 
 #define SET_MARK(_p)    ((node_t *)(((uintptr_t)(_p)) | 1))
 #define CLR_MARKD(_p)    ((NodeDesc *)(((uintptr_t)(_p)) & ~1))
@@ -91,6 +93,13 @@ enum OpType
     DELETE
 };
 
+enum PersistStatus
+{
+    MAYBE = 0,
+    IN_PROGRESS,
+    PERSISTED,
+};    
+
 static int gc_id[NUM_LEVELS];
 
 static uint32_t g_count_commit = 0;
@@ -103,6 +112,27 @@ static uint32_t g_count_fake_abort = 0;
 
 static bool help_ops(trans_skip* l, Desc* desc, uint8_t opid);
 
+PERSIST_CODE
+(
+
+inline bool needPersistenceHelp(Desc* desc)
+{
+    return desc->persistStatus != PERSISTED;
+}
+
+inline void persistDesc(Desc* desc)
+{
+    for(int i = 0; i < desc->size; i++) 
+    {
+        DTX::PERSIST_FLUSH_ONLY(&(desc->ops[i]), sizeof(Operator));
+    }
+    DTX::PERSIST_FLUSH_ONLY(desc, sizeof(Desc));
+    DTX::PERSIST_BARRIER_ONLY();
+    desc->persistStatus = PERSISTED;
+}
+
+)
+
 static inline bool FinishPendingTxn(trans_skip* l, NodeDesc* nodeDesc, Desc* desc)
 {
     // The node accessed by the operations in same transaction is always active 
@@ -111,17 +141,37 @@ static inline bool FinishPendingTxn(trans_skip* l, NodeDesc* nodeDesc, Desc* des
         return true;
     }
 
-    if(nodeDesc->desc->status == LIVE)
+
+    bool needHelp = false;
+
+    if(desc->status != LIVE)
     {
+        
+        PERSIST_CODE
+        (
+            needHelp = needPersistenceHelp(desc);
+        )
+        if(!needHelp)
+            return true;
+    } else {
         help_ops(l, nodeDesc->desc, nodeDesc->opid + 1);
-    }
+    }   
+
 
     return true;
 }
 
 static inline bool IsNodeActive(NodeDesc* nodeDesc)
 {
-    return nodeDesc->desc->status == COMMITTED;
+
+    bool ret = (nodeDesc->desc->status == COMMITTED);
+
+    PERSIST_CODE
+    (
+        ret = ret && (nodeDesc->desc->persistStatus == PERSISTED);
+    )
+
+    return ret;
 }
 
 static inline bool IsKeyExist(NodeDesc* nodeDesc)
@@ -823,9 +873,38 @@ static inline bool help_ops(trans_skip* l, Desc* desc, uint8_t opid)
     {
         if(__sync_bool_compare_and_swap(&desc->status, LIVE, ABORTED))
         {
+
+            PERSIST_CODE
+            (
+                if(__sync_bool_compare_and_swap(&desc->persistStatus, MAYBE, IN_PROGRESS)) 
+                {
+                    persistDesc(desc);
+                }else if(desc->persistStatus == IN_PROGRESS)
+                {
+                    persistDesc(desc);
+                }
+
+            ) 
+
             __sync_fetch_and_add(&g_count_abort, 1);
             __sync_fetch_and_add(&g_count_fake_abort, 1);
+        } else
+        {
+            PERSIST_CODE
+            (
+                if(needPersistenceHelp(desc)) 
+                {
+                    if(__sync_bool_compare_and_swap(&desc->persistStatus, MAYBE, IN_PROGRESS)) 
+                    {
+                        persistDesc(desc);
+                    }else if(desc->persistStatus == IN_PROGRESS)
+                    {
+                        persistDesc(desc);
+                    }
+                }
+            ) 
         }
+        
         return false;
     }
 
@@ -861,6 +940,17 @@ static inline bool help_ops(trans_skip* l, Desc* desc, uint8_t opid)
     {
         if(__sync_bool_compare_and_swap(&desc->status, LIVE, COMMITTED))
         {
+            PERSIST_CODE
+            (
+                if(__sync_bool_compare_and_swap(&desc->persistStatus, MAYBE, IN_PROGRESS))
+                {
+                    persistDesc(desc);
+                }else if(desc->persistStatus == IN_PROGRESS)
+                {
+                    persistDesc(desc);
+                }
+
+            )            
             __sync_fetch_and_add(&g_count_commit, 1);
 
             // Mark nodes for physical deletion
@@ -883,6 +973,17 @@ static inline bool help_ops(trans_skip* l, Desc* desc, uint8_t opid)
     {
         if(__sync_bool_compare_and_swap(&desc->status, LIVE, ABORTED))
         {
+            PERSIST_CODE
+            (
+                if(__sync_bool_compare_and_swap(&desc->persistStatus, MAYBE, IN_PROGRESS))
+                {
+                    persistDesc(desc);
+                }else if(desc->persistStatus == IN_PROGRESS)
+                {
+                    persistDesc(desc);
+                }
+
+            )           
             __sync_fetch_and_add(&g_count_abort, 1);
             
             // Mark nodes for physical deletion
