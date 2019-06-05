@@ -69,6 +69,7 @@ AC_CHECK_LIB([tcmalloc], [malloc], , [AC_MSG_FAILURE([
 #AC_CHECK_FUNCS(clock_gettime, [], [AC_CHECK_LIB(rt, clock_gettime, [AC_DEFINE([HAVE_CLOCK_GETTIME], [1], [Find clock_gettime]) LIBS="$LIBS -lrt"])])
 
 AC_CONFIG_FILES([Makefile
-                 src/Makefile])
+                 src/Makefile
+                 src/common/fraser/Makefile])
 
 AC_OUTPUT

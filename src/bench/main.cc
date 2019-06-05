@@ -102,7 +102,7 @@ void Tester(uint32_t numThread, uint32_t testSize, uint32_t tranSize, uint32_t k
 
 int main(int argc, const char *argv[])
 {
-    uint32_t setType = 0;
+    uint32_t setType = 1;
     uint32_t numThread = 64;
     uint32_t testSize = 100000;
     uint32_t tranSize = 1;
@@ -122,10 +122,11 @@ int main(int argc, const char *argv[])
     assert(keyRange < 0xffffffff);
 
     const char* setName[] = 
-    {   "TransList" //, 
+    {   "TransList" , 
+        "TransSkip"
         // "RSTMList",
         // "BoostingList",
-        // "TransSkip",
+        // "TransSkip" ,
         // "BoostingSkip",
         // "OSTMSkip"
     };
@@ -143,9 +144,9 @@ int main(int argc, const char *argv[])
     // case 2:
     //     { SetAdaptor<BoostingList> set; Tester(numThread, testSize, tranSize, keyRange, insertion, deletion, set); }
     //     break;
-    // case 3:
-    //     { SetAdaptor<trans_skip> set(testSize, numThread + 1, tranSize); Tester(numThread, testSize, tranSize, keyRange, insertion, deletion, set); }
-    //     break;
+    case 1:
+        { SetAdaptor<trans_skip> set(testSize, numThread + 1, tranSize); Tester(numThread, testSize, tranSize, keyRange, insertion, deletion, set); }
+        break;
     // case 4:
     //     { SetAdaptor<BoostingSkip> set; Tester(numThread, testSize, tranSize, keyRange, insertion, deletion, set); }
     //     break;
